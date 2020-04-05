@@ -1,0 +1,308 @@
+#
+- hosts: 127.0.0.1
+  connection: local
+  become: yes
+  vars_files:
+    - livefire_vars.yml
+    - policy_api_vars.yml
+  tasks:
+    - name: Prepare vDS via PowerCLI
+      command: pwsh ./vds_prep.ps1
+
+    - name: Collect trunk1 port group  Network id
+      command: sudo pwsh ./get_key_trunk1.ps1
+      register: trunk1
+
+    - name: Collect trunk2 port group  Network id
+      command: sudo pwsh ./get_key_trunk2.ps1
+      register: trunk2
+
+    - name: Collect trunk3 port group  Network id
+      command: sudo pwsh ./get_key_trunk3.ps1
+      register: trunk3
+
+    - name: Collect trunk4 port group  Network id
+      command: sudo pwsh ./get_key_trunk4.ps1
+      register: trunk4
+
+    - name: Register compute manager at site A
+      nsxt_fabric_compute_managers:
+          hostname: "{{ nsx_node1.hostname }}"
+          username: "{{ nsx_username }}"
+          password: "{{ nsx_password }}"
+          validate_certs: "{{ validate_certs }}"
+          display_name: "{{ item.display_name }}"
+          server: "{{ item.mgmt_ip }}"
+          origin_type: "{{ item.origin_type }}"
+          credential:
+            credential_type: "{{ item.credential_type }}"
+            username: "{{ item.username }}"
+            password: "{{ item.password }}"
+          state: present
+      with_items:
+        - "{{compute_managers_sitea}}"
+
+    - name: Register compute manager at site B
+      nsxt_fabric_compute_managers:
+          hostname: "{{ nsx_node2.hostname }}"
+          username: "{{ nsx_username }}"
+          password: "{{ nsx_password }}"
+          validate_certs: "{{ validate_certs }}"
+          display_name: "{{ item.display_name }}"
+          server: "{{ item.mgmt_ip }}"
+          origin_type: "{{ item.origin_type }}"
+          credential:
+            credential_type: "{{ item.credential_type }}"
+            username: "{{ item.username }}"
+            password: "{{ item.password }}"
+          state: present
+      with_items:
+        - "{{compute_managers_siteb}}"
+
+    - name: Create IP Pools at Site A
+      nsxt_ip_pools:
+        hostname: "{{ nsx_node1.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ item.display_name }}"
+        subnets: "{{ item.subnets }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ ip_pools_sitea  }}"
+
+    - name: Create IP Pools at Site B
+      nsxt_ip_pools:
+        hostname: "{{ nsx_node2.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ item.display_name }}"
+        subnets: "{{ item.subnets }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ ip_pools_siteb  }}"
+
+    - name: Create uplink profiles at Site A
+      nsxt_uplink_profiles:
+        hostname: "{{ nsx_node1.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: False
+        resource_type: UplinkHostSwitchProfile
+        display_name: "{{item.display_name}}"
+        teaming: "{{item.teaming}}"
+        transport_vlan: "{{item.transport_vlan}}"
+        state: "present"
+        named_teamings: "{{item.named_teamings}}"
+      with_items:
+        - "{{uplink_profiles_sitea}}"
+
+    - name: Create uplink profiles at Site B
+      nsxt_uplink_profiles:
+        hostname: "{{ nsx_node2.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: False
+        resource_type: UplinkHostSwitchProfile
+        display_name: "{{item.display_name}}"
+        teaming: "{{item.teaming}}"
+        transport_vlan: "{{item.transport_vlan}}"
+        state: "present"
+        named_teamings: "{{item.named_teamings}}"
+      with_items:
+        - "{{uplink_profiles_siteb}}"
+
+
+    - name: Create transport zones at Site A
+      nsxt_transport_zones:
+        hostname: "{{ nsx_node1.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        resource_type: "TransportZone"
+        display_name: "{{ item.display_name }}"
+        description: "{{ item.description }}"
+        transport_type: "{{ item.transport_type }}"
+        host_switch_name: "{{ item.host_switch_name }}"
+        uplink_teaming_policy_names: "{{item.uplink_teaming_policy_names}}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ transport_zones_sitea }}"
+      register: sitea_tzs
+
+    - name: Create transport zones at Site B
+      nsxt_transport_zones:
+        hostname: "{{ nsx_node2.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        resource_type: "TransportZone"
+        display_name: "{{ item.display_name }}"
+        description: "{{ item.description }}"
+        transport_type: "{{ item.transport_type }}"
+        host_switch_name: "{{ item.host_switch_name }}"
+        uplink_teaming_policy_names: "{{item.uplink_teaming_policy_names}}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ transport_zones_siteb }}"
+      register: siteb_tzs
+
+    - name: Create Transport Node Profiles at Site A
+      nsxt_transport_node_profiles:
+        hostname: "{{ nsx_node1.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        resource_type: TransportNodeProfile
+        display_name: "{{ item.display_name }}"
+        description: "{{ item.description }}"
+        host_switch_spec:
+          resource_type: StandardHostSwitchSpec
+          host_switches: "{{ item.host_switches }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ transport_node_profiles_sitea }}"
+
+    - name: Create Transport Node Profiles at Site B
+      nsxt_transport_node_profiles:
+        hostname: "{{ nsx_node2.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        resource_type: TransportNodeProfile
+        display_name: "{{ item.display_name }}"
+        description: "{{ item.description }}"
+        host_switch_spec:
+          resource_type: StandardHostSwitchSpec
+          host_switches: "{{ item.host_switches }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ transport_node_profiles_siteb }}"
+
+    - name: Attach Transport node profile to cluster at Site-A
+      nsxt_transport_node_collections:
+        hostname: "{{ nsx_node1.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "TNCSITEA"
+        resource_type: "TransportNodeCollection"
+        description: "Transport Node Collections Hosts"
+        compute_manager_name: "{{compute_managers_sitea[0].display_name}}"
+        cluster_name: "Cluster-01a"
+        transport_node_profile_name: "{{transport_node_profiles_sitea[0].display_name}}"
+        state: present
+
+    - name: Attach Transport node profile to cluster at Site-B
+      nsxt_transport_node_collections:
+        hostname: "{{ nsx_node2.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "TNCSITEB"
+        resource_type: "TransportNodeCollection"
+        description: "Transport Node Collections Hosts"
+        compute_manager_name: "{{compute_managers_siteb[0].display_name}}"
+        cluster_name: "Cluster-01b"
+        transport_node_profile_name: "{{transport_node_profiles_siteb[0].display_name}}"
+        state: present
+
+
+    - name: Create  Edge Transport Nodes at Site A
+      nsxt_transport_nodes:
+        hostname: "{{ nsx_node1.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ item.display_name }}"
+        host_switch_spec:
+          resource_type: StandardHostSwitchSpec
+          host_switches: "{{ item.host_switches }}"
+        transport_zone_endpoints: "{{ item.transport_zone_endpoints }}"
+        node_deployment_info: "{{ item.node_deployment_info }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ edge_transport_nodes_sitea }}"
+      register: edge_sitea
+
+    - name: Add edge cluster at Site A
+      nsxt_edge_clusters:
+        hostname: "{{ nsx_node1.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ item.display_name }}"
+        cluster_profile_bindings:
+        - profile_id: "{{ item.cluster_profile_binding_id }}"
+        members: "{{ item.members }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ edge_clusters_sitea }}"
+      register: edge_cluster_sitea
+
+    - name: Create  Edge Transport Nodes at Site B
+      nsxt_transport_nodes:
+        hostname: "{{ nsx_node2.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ item.display_name }}"
+        host_switch_spec:
+          resource_type: StandardHostSwitchSpec
+          host_switches: "{{ item.host_switches }}"
+        transport_zone_endpoints: "{{ item.transport_zone_endpoints }}"
+        node_deployment_info: "{{ item.node_deployment_info }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ edge_transport_nodes_siteb }}"
+      register: edge_siteb
+
+    - name: Add edge cluster at Site B
+      nsxt_edge_clusters:
+        hostname: "{{ nsx_node2.mgmt_ip }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        validate_certs: "{{ validate_certs }}"
+        display_name: "{{ item.display_name }}"
+        cluster_profile_bindings:
+        - profile_id: "{{ item.cluster_profile_binding_id }}"
+        members: "{{ item.members }}"
+        state: "{{ state }}"
+      with_items:
+        - "{{ edge_clusters_siteb }}"
+      register: edge_cluster_siteb
+
+    - name: Create Gateways (Routers)at Site A
+      uri:
+        method: PATCH
+        url: "https://{{ nsx_node1.mgmt_ip }}/policy/api/v1/infra/"
+        user: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        body: "{{sitea_gateways}}"
+        body_format: json
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+
+    - name: Migrate webapp to overlay
+      command: pwsh  migrate_webapp_to_overlay.ps1
+
+    - name: Create Security Policy and Groups
+      uri:
+        method: PATCH
+        url: "https://{{ nsx_node1.hostname }}/policy/api/v1/infra/"
+        user: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        body: "{{microsegmentation}}"
+        body_format: json
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+
+    - name: Tag VMs via terraform
+      terraform:
+        project_path: ./terraform-tags
+        state: present
+        force_init: true
+
